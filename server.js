@@ -21,6 +21,7 @@ var server = http.createServer(function(request, response){
   /******** 从这里开始看，上面不要看 ************/
 
   console.log('有个傻子发请求过来啦！路径（带查询参数）为：' + pathWithQuery)
+  const session = JSON.parse(fs.readFileSync('./session.json').toString())
 
   if(path === '/sign_in' && method ==="POST"){
     response.setHeader('Content-Type','text/html;charset=UTF-8')
@@ -30,44 +31,43 @@ var server = http.createServer(function(request, response){
       array.push(chunk)
     })
     request.on('end',()=>{
-      
       const string = Buffer.concat(array).toString()
       const obj = JSON.parse(string)
       const user = userArray.find((user)=> user.name===obj.name && user.password === obj.password)
       if(user === undefined){
         response.statusCode = 400
         response.setHeader('Content-Type','text/json;charset=UTF-8')
-        response.end(`{"errorCode":531}`)//错误码不确定
       }else{
         response.statusCode = 200
-        response.setHeader("Set-Cookie",`user_id=${user.id};HttpOnly`)
-        response.end()
-        
+        const random = Math.random()
+        session[random] = {user_id: user.id}
+        fs.writeFileSync('./session.json',JSON.stringify(session))
+        response.setHeader("Set-Cookie",`session_id=${random};HttpOnly`)        
       }
+      response.end()
     })
   }else if(path === '/home.html'){
     const cookie = request.headers['cookie']
-    let userId
+    let sessionId
     try{
-      userId = cookie.split(';').filter(s => s.indexOf('user_id=')>=0)[0].split('=')[1]
+      sessionId = cookie.split(';').filter(s => s.indexOf('session_id=')>=0)[0].split('=')[1]
     }catch(error){}
-
     
-    if(userId){
+    if(sessionId){
+      const userId = session[sessionId].user_id
       const userArray = JSON.parse(fs.readFileSync('./db/users.json'))
-      const user = userArray.find(user=> user.id.toString() ===userId)
+      const user = userArray.find(user=> user.id === userId)
       const homeHtml = fs.readFileSync('./public/home.html').toString()
       
       if(user){
         const string = homeHtml.replace('{{loginStatus}}','已登录').replace('{{user.name}}',user.name)
         response.write(string)
-        response.end()
-      }else{
-        const string = homeHtml.replace('{{loginStatus}}','未登录').replace('{{user.name}}','')
-        response.write(string)
-        response.end()
-      }
-      
+        response.end()}
+      // }else{
+      //   const string = homeHtml.replace('{{loginStatus}}','未登录').replace('{{user.name}}','')
+      //   response.write(string)
+      //   response.end()
+      // }   
     }else{
       const homeHtml = fs.readFileSync('./public/home.html').toString()
       const string = homeHtml.replace('{{loginStatus}}','未登录').replace('{{user.name}}','')
